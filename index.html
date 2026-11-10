@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🛍️ 商品价格追踪器</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"
+        integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi"
+        crossorigin="anonymous"></script>
+<style>
+:root {
+  color-scheme: light;
+  --red:    #e1251b;
+  --blue:   #1a73e8;
+  --green:  #1a8c3e;
+  --gray:   #6b7280;
+  --light:  #f9fafb;
+  --border: #e5e7eb;
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+       background: #f3f4f6; color: #111827; min-height: 100vh; }
+
+/* ── Header ── */
+header {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+header h1 { font-size: 18px; font-weight: 700; }
+header .actions { display: flex; gap: 10px; }
+.btn {
+  padding: 7px 16px; border-radius: 7px; border: none;
+  cursor: pointer; font-size: 14px; font-weight: 500;
+  transition: opacity .15s;
+}
+.btn:hover { opacity: .85; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-outline { background: #fff; color: #374151; border: 1px solid var(--border); }
+.btn-red     { background: var(--red); color: #fff; }
+.btn-sm      { padding: 5px 12px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Stats bar ── */
+.stats {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex; gap: 32px; flex-wrap: wrap;
+}
+.stat-item { text-align: center; }
+.stat-num  { font-size: 22px; font-weight: 700; color: var(--blue); }
+.stat-label{ font-size: 12px; color: var(--gray); margin-top: 2px; }
+
+/* ── Main layout ── */
+.main { max-width: 1200px; margin: 24px auto; padding: 0 16px;
+        display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+@media (max-width: 768px) { .main { grid-template-columns: 1fr; } }
+
+/* ── Card ── */
+.card { background: #fff; border-radius: var(--radius);
+        border: 1px solid var(--border); overflow: hidden; }
+.card-header { padding: 14px 18px; font-weight: 600; font-size: 15px;
+               border-bottom: 1px solid var(--border); background: var(--light); }
+.card-body  { padding: 18px; }
+
+/* ── Form ── */
+.form-group { margin-bottom: 14px; }
+label { font-size: 13px; font-weight: 500; color: #374151; display: block; margin-bottom: 5px; }
+input, select, textarea {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: 7px; font-size: 14px; outline: none;
+  transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hint { font-size: 12px; color: var(--gray); margin-top: 4px; }
+
+/* ── Info box ── */
+.info-box {
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 7px; padding: 10px 12px;
+  font-size: 13px; margin-bottom: 12px; display: none;
+}
+.info-box.show { display: block; }
+.price-preview { font-size: 18px; font-weight: 700; color: var(--red); }
+
+/* ── Products table ── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { padding: 10px 12px; text-align: left; font-weight: 600;
+     background: var(--light); border-bottom: 2px solid var(--border);
+     white-space: nowrap; color: #374151; }
+td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fafafa; }
+.name-cell { font-weight: 500; max-width: 220px; }
+.name-cell small { display: block; color: var(--gray); font-size: 12px; font-weight: 400; }
+.price-cell { font-size: 16px; font-weight: 700; white-space: nowrap; }
+.price-hit  { color: var(--green); }
+.price-norm { color: var(--red); }
+.price-na   { color: var(--gray); font-size: 13px; font-weight: 400; }
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.badge-blue  { background: #eff6ff; color: #1d4ed8; }
+.badge-green { background: #f0fdf4; color: #15803d; }
+.link-group  { display: flex; gap: 6px; flex-wrap: wrap; }
+.link-btn {
+  padding: 3px 10px; border-radius: 5px; font-size: 12px;
+  font-weight: 500; text-decoration: none; transition: opacity .15s;
+}
+.link-btn:hover { opacity: .8; }
+.link-jd  { background: #fef2f2; color: var(--red); }
+.link-tb  { background: #fff7ed; color: #c2410c; }
+.link-pdd { background: #fdf4ff; color: #9333ea; }
+.icon-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--gray); font-size: 16px; padding: 4px;
+  transition: color .15s;
+}
+.icon-btn:hover { color: #ef4444; }
+.empty-state {
+  padding: 48px 24px; text-align: center; color: var(--gray);
+}
+.empty-state .icon { font-size: 36px; margin-bottom: 10px; }
+
+/* ── Loading / toast ── */
+.spinner { display: inline-block; width: 14px; height: 14px;
+           border: 2px solid #d1d5db; border-top-color: var(--blue);
+           border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #1f2937; color: #fff; padding: 10px 20px;
+  border-radius: 8px; font-size: 14px; z-index: 9999;
+  opacity: 0; transition: opacity .3s; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+
+/* ── Modal ── */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  z-index: 500; display: none; align-items: center; justify-content: center;
+}
+.modal-bg.show { display: flex; }
+.modal {
+  background: #fff; border-radius: var(--radius); width: 90%; max-width: 640px;
+  max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+.modal-header {
+  padding: 16px 20px; font-weight: 700; font-size: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-body   { padding: 20px; }
+.modal-footer { padding: 14px 20px; border-top: 1px solid var(--border);
+                display: flex; justify-content: flex-end; gap: 10px; }
+.close-btn { background: none; border: none; font-size: 20px;
+             cursor: pointer; color: var(--gray); line-height: 1; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <h1>🛍️ 商品价格追踪器</h1>
+  <div class="actions">
+    <button class="btn btn-primary" id="refreshBtn" onclick="refreshAll()">🔄 刷新价格</button>
+    <button class="btn btn-outline" onclick="exportExcel()">📥 导出</button>
+    <button class="btn btn-outline" onclick="openSettings()">⚙️ 设置</button>
+  </div>
+</header>
+
+<!-- ── Stats ── -->
+<div class="stats" id="statsBar">
+  <div class="stat-item"><div class="stat-num" id="statTotal">—</div><div class="stat-label">追踪商品</div></div>
+  <div class="stat-item"><div class="stat-num" id="statHit" style="color:var(--green)">—</div><div class="stat-label">已达目标价</div></div>
+  <div class="stat-item"><div class="stat-num" id="statLast" style="font-size:14px;padding-top:4px">—</div><div class="stat-label">最近更新</div></div>
+</div>
+
+<!-- ── Main ── -->
+<div class="main">
+
+  <!-- Add product card -->
+  <div>
+    <div class="card">
+      <div class="card-header">➕ 添加商品</div>
+      <div class="card-body">
+        <div class="form-group">
+          <label>京东商品链接 *</label>
+          <input type="url" id="jdUrl" placeholder="https://item.jd.com/XXXXXXXX.html">
+        </div>
+        <button class="btn btn-outline" style="width:100%;margin-bottom:12px"
+                onclick="fetchProductInfo()">🔍 自动获取商品信息</button>
+
+        <div class="info-box" id="infoBox">
+          <div id="infoName" style="font-weight:600;margin-bottom:4px"></div>
+          <div>当前价格：<span class="price-preview" id="infoPrice"></span></div>
+        </div>
+
+        <div class="form-group">
+          <label>商品名称 *</label>
+          <input type="text" id="prodName" placeholder="自动填入，也可手动修改">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>店铺类型</label>
+            <select id="storeType">
+              <option>自营</option>
+              <option>官方旗舰店</option>
+              <option>品牌旗舰店</option>
+              <option>其他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>目标价格（¥）</label>
+            <input type="number" id="targetPrice" placeholder="选填" min="0" step="0.01">
+            <div class="hint">降至此价格时提醒</div>
+          </div>
+        </div>
+        <details style="margin-bottom:14px">
+          <summary style="cursor:pointer;font-size:13px;color:var(--gray)">其他平台链接（选填）</summary>
+          <div style="margin-top:10px">
+            <div class="form-group">
+              <label>淘宝 / 天猫链接</label>
+              <input type="url" id="taobaoUrl" placeholder="https://item.taobao.com/...">
+            </div>
+            <div class="form-group">
+              <label>拼多多链接</label>
+              <input type="url" id="pddUrl" placeholder="https://mobile.yangkeduo.com/...">
+            </div>
+          </div>
+        </details>
+        <div class="form-group">
+          <label>备注</label>
+          <input type="text" id="notes" placeholder="如：等双11再买">
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="addProduct()">✅ 加入追踪列表</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Products list card -->
+  <div>
+    <div class="card">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <span>📋 追踪列表</span>
+        <span id="tableStatus" style="font-size:13px;color:var(--gray);font-weight:400"></span>
+      </div>
+      <div id="productsWrap">
+        <div class="empty-state">
+          <div class="icon">🔍</div>
+          <div>正在加载...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Price History Modal ── -->
+<div class="modal-bg" id="historyModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="historyTitle">价格走势</span>
+      <button class="close-btn" onclick="closeModal('historyModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="height:280px;position:relative">
+        <canvas id="priceChart"></canvas>
+      </div>
+      <div id="historyStats" style="display:flex;gap:24px;margin-top:16px;flex-wrap:wrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Modal ── -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span>⚙️ 邮件提醒设置</span>
+      <button class="close-btn" onclick="closeModal('settingsModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--gray);margin-bottom:16px">
+        配置后，当商品价格达到目标价或降幅 ≥ 5% 时点击「刷新价格」会自动发送邮件。
+        <br>QQ邮箱请填「授权码」（邮箱设置 → 账户 → 开启SMTP → 生成授权码）。
+      </p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>SMTP 服务器</label>
+          <input id="smtpHost" placeholder="smtp.qq.com">
+        </div>
+        <div class="form-group">
+          <label>端口</label>
+          <input id="smtpPort" placeholder="465">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>发件邮箱</label>
+        <input id="emailFrom" type="email" placeholder="yourmail@qq.com">
+      </div>
+      <div class="form-group">
+        <label>密码 / 授权码</label>
+        <input id="emailPass" type="password" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label>收件邮箱（可与发件相同）</label>
+        <input id="emailTo" type="email" placeholder="yourmail@qq.com">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="testEmail()">📤 发测试邮件</button>
+      <button class="btn btn-primary" onclick="saveSettings()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// API helpers
+// ═══════════════════════════════════════════════════════════
+const api = {
+  get:  (path)       => fetch(path).then(r => r.json()),
+  post: (path, body) => fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r => r.json()),
+  del:  (path)       => fetch(path, {method:'DELETE'}).then(r => r.json()),
+};
+
+// ═══════════════════════════════════════════════════════════
+// Toast
+// ═══════════════════════════════════════════════════════════
+let toastTimer;
+function toast(msg, dur=3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ═══════════════════════════════════════════════════════════
+// Modal helpers
+// ═══════════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+// Fetch JD product info
+// ═══════════════════════════════════════════════════════════
+async function fetchProductInfo() {
+  const url = document.getElementById('jdUrl').value.trim();
+  if (!url) return toast('请先填写京东商品链接');
+
+  toast('正在获取商品信息…');
+  try {
+    const data = await api.get(`/api/fetch_product?url=${encodeURIComponent(url)}`);
+    if (data.error) return toast('❌ ' + data.error);
+
+    document.getElementById('prodName').value = data.name || '';
+    document.getElementById('infoName').textContent = data.name || '';
+    document.getElementById('infoPrice').textContent = data.price ? `¥${data.price}` : '获取失败';
+    document.getElementById('infoBox').classList.add('show');
+    toast('✅ 信息已自动填入');
+  } catch(e) {
+    toast('网络请求失败，请重试');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Add product
+// ═══════════════════════════════════════════════════════════
+async function addProduct() {
+  const name = document.getElementById('prodName').value.trim();
+  const jdUrl = document.getElementById('jdUrl').value.trim();
+  if (!name || !jdUrl) return toast('请填写商品名称和京东链接');
+
+  toast('添加中…');
+  const body = {
+    name, jd_url: jdUrl,
+    store_type:   document.getElementById('storeType').value,
+    target_price: parseFloat(document.getElementById('targetPrice').value) || null,
+    taobao_url:   document.getElementById('taobaoUrl').value.trim() || null,
+    pdd_url:      document.getElementById('pddUrl').value.trim() || null,
+    notes:        document.getElementById('notes').value.trim() || null,
+  };
+  const res = await api.post('/api/products', body);
+  if (res.error) return toast('❌ ' + res.error);
+
+  // Reset form
+  ['jdUrl','prodName','targetPrice','taobaoUrl','pddUrl','notes'].forEach(id =>
+    document.getElementById(id).value = '');
+  document.getElementById('infoBox').classList.remove('show');
+  toast('✅ 添加成功！当前价格：' + (res.current_price ? `¥${res.current_price}` : '待获取'));
+  loadProducts();
+}
+
+// ═══════════════════════════════════════════════════════════
+// Load & render products
+// ═══════════════════════════════════════════════════════════
+let productsCache = [];
+
+async function loadProducts() {
+  const wrap = document.getElementById('productsWrap');
+  wrap.innerHTML = '<div class="empty-state"><div class="spinner"></div><div style="margin-top:8px;color:var(--gray)">加载中...</div></div>';
+
+  try {
+    const data = await api.get('/api/products');
+    productsCache = data;
+    renderProducts(data);
+    updateStats(data);
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>加载失败，请检查网络或刷新页面</div></div>';
+  }
+}
+
+function renderProducts(data) {
+  const wrap = document.getElementById('productsWrap');
+  if (!data || data.length === 0) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div>还没有追踪的商品，请在左侧添加</div></div>';
+    return;
+  }
+
+  const rows = data.map(p => {
+    const hasPrice = p.current_price != null;
+    const hitTarget = hasPrice && p.target_price && p.current_price <= p.target_price;
+    const priceClass = !hasPrice ? 'price-na' : hitTarget ? 'price-hit' : 'price-norm';
+    const priceText  = !hasPrice ? '待获取' :
+                       `¥${parseFloat(p.current_price).toFixed(2)}` +
+                       (hitTarget ? ' ✅' : '');
+
+    const targetTxt = p.target_price ? `目标 ¥${parseFloat(p.target_price).toFixed(2)}` : '—';
+
+    const links = [
+      p.jd_url     ? `<a href="${p.jd_url}" target="_blank" class="link-btn link-jd">京东</a>`     : '',
+      p.taobao_url ? `<a href="${p.taobao_url}" target="_blank" class="link-btn link-tb">淘宝</a>`  : '',
+      p.pdd_url    ? `<a href="${p.pdd_url}" target="_blank" class="link-btn link-pdd">拼多多</a>`  : '',
+    ].join('');
+
+    const badgeClass = p.store_type === '自营' ? 'badge-blue' : 'badge-green';
+
+    return `<tr>
+      <td class="name-cell">
+        ${escHtml(p.name)}
+        <small><span class="badge ${badgeClass}">${escHtml(p.store_type||'—')}</span>${p.notes ? ' ' + escHtml(p.notes) : ''}</small>
+      </td>
+      <td class="price-cell ${priceClass}">${priceText}</td>
+      <td style="color:var(--gray);font-size:13px">${targetTxt}</td>
+      <td><div class="link-group">${links}</div></td>
+      <td style="white-space:nowrap">
+        <button class="icon-btn" title="价格走势" onclick="showHistory(${p.id},'${escHtml(p.name)}')">📈</button>
+        <button class="icon-btn" title="删除" onclick="deleteProduct(${p.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>商品名称</th><th>当前价格</th><th>目标价</th><th>链接</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function updateStats(data) {
+  const total = data.length;
+  const hit   = data.filter(p => p.current_price && p.target_price && p.current_price <= p.target_price).length;
+  const withTime = data.filter(p => p.last_checked).map(p => p.last_checked).sort().reverse();
+  const last  = withTime[0] ? withTime[0].substring(0,16).replace('T',' ') : '—';
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statHit').textContent   = hit;
+  document.getElementById('statLast').textContent  = last;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Delete product
+// ═══════════════════════════════════════════════════════════
+async function deleteProduct(id) {
+  if (!confirm('确定要从追踪列表移除这个商品吗？')) return;
+  await api.del(`/api/products?id=${id}`);
+  toast('已移除');
+  loadProducts();
+}
+
+// ═══════════════════════════════════════════════════════════
+// Refresh prices
+// ═══════════════════════════════════════════════════════════
+async function refreshAll() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 检查中…';
+  document.getElementById('tableStatus').textContent = '价格更新中…';
+
+  try {
+    const res = await api.post('/api/refresh', {});
+    toast(`✅ 已更新 ${res.updated} 个商品` +
+          (res.alerts && res.alerts.length ? `，${res.alerts.length} 个价格提醒` : ''));
+    loadProducts();
+  } catch(e) {
+    toast('刷新失败，请重试');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔄 刷新价格';
+    document.getElementById('tableStatus').textContent = '';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Price history
+// ═══════════════════════════════════════════════════════════
+let chartInstance = null;
+
+async function showHistory(productId, name) {
+  document.getElementById('historyTitle').textContent = `📈 ${name.substring(0,30)} 价格走势`;
+  openModal('historyModal');
+
+  const data = await api.get(`/api/history?product_id=${productId}`);
+
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+  if (!data || data.length < 2) {
+    document.getElementById('priceChart').getContext('2d').clearRect(0,0,9999,9999);
+    document.getElementById('historyStats').innerHTML =
+      '<p style="color:var(--gray);font-size:13px">数据不足（至少需2次刷新），请多点几次「刷新价格」</p>';
+    return;
+  }
+
+  const labels = data.map(r => r.checked_at.substring(0,16).replace('T',' '));
+  const prices = data.map(r => parseFloat(r.price));
+
+  const target = productsCache.find(p => p.id === productId)?.target_price;
+
+  chartInstance = new Chart(document.getElementById('priceChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: '京东价格',
+        data: prices,
+        borderColor: '#e1251b',
+        backgroundColor: 'rgba(225,37,27,.08)',
+        borderWidth: 2,
+        pointRadius: 4,
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => `¥${ctx.parsed.y.toFixed(2)}` }
+        },
+        ...(target ? {
+          annotation: {
+            annotations: {
+              line1: { type:'line', yMin:target, yMax:target,
+                borderColor:'#15803d', borderWidth:1.5, borderDash:[6,4] }
+            }
+          }
+        } : {})
+      },
+      scales: {
+        y: { ticks: { callback: v => '¥' + v } }
+      }
+    }
+  });
+
+  const min = Math.min(...prices), max = Math.max(...prices), cur = prices[prices.length-1];
+  document.getElementById('historyStats').innerHTML = `
+    <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:var(--green)">¥${min.toFixed(2)}</div><div style="font-size:12px;color:var(--gray)">历史最低</div></div>
+    <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:var(--gray)">¥${max.toFixed(2)}</div><div style="font-size:12px;color:var(--gray)">历史最高</div></div>
+    <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:var(--red)">¥${cur.toFixed(2)}</div><div style="font-size:12px;color:var(--gray)">当前价格</div></div>
+    ${target ? `<div style="text-align:center"><div style="font-size:18px;font-weight:700;color:var(--blue)">¥${parseFloat(target).toFixed(2)}</div><div style="font-size:12px;color:var(--gray)">目标价</div></div>` : ''}
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Settings
+// ═══════════════════════════════════════════════════════════
+async function openSettings() {
+  const cfg = await api.get('/api/settings');
+  document.getElementById('smtpHost').value  = cfg.smtp_host  || 'smtp.qq.com';
+  document.getElementById('smtpPort').value  = cfg.smtp_port  || '465';
+  document.getElementById('emailFrom').value = cfg.email_from || '';
+  document.getElementById('emailPass').value = cfg.email_pass || '';
+  document.getElementById('emailTo').value   = cfg.email_to   || '';
+  openModal('settingsModal');
+}
+
+async function saveSettings() {
+  await api.post('/api/settings', {
+    smtp_host:  document.getElementById('smtpHost').value.trim(),
+    smtp_port:  document.getElementById('smtpPort').value.trim(),
+    email_from: document.getElementById('emailFrom').value.trim(),
+    email_pass: document.getElementById('emailPass').value,
+    email_to:   document.getElementById('emailTo').value.trim(),
+  });
+  toast('✅ 设置已保存');
+  closeModal('settingsModal');
+}
+
+async function testEmail() {
+  await saveSettings();
+  toast('发送测试邮件中…');
+  const res = await api.post('/api/settings', { _action: 'test' });
+  toast(res.sent ? '✅ 测试邮件已发送，请检查收件箱' : '❌ 发送失败：' + (res.error||'未知错误'));
+}
+
+// ═══════════════════════════════════════════════════════════
+// Export Excel (CSV fallback)
+// ═══════════════════════════════════════════════════════════
+function exportExcel() {
+  if (!productsCache.length) return toast('没有数据可导出');
+  const header = ['商品名称','店铺类型','当前价格','目标价格','备注','京东链接','淘宝链接','拼多多链接','最后更新'];
+  const rows = productsCache.map(p => [
+    p.name, p.store_type,
+    p.current_price ? `¥${p.current_price}` : '',
+    p.target_price  ? `¥${p.target_price}`  : '',
+    p.notes||'', p.jd_url||'', p.taobao_url||'', p.pdd_url||'',
+    p.last_checked ? p.last_checked.substring(0,16) : ''
+  ]);
+  const csv = [header, ...rows].map(r =>
+    r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `价格追踪_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════════
+// Utils
+// ═══════════════════════════════════════════════════════════
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════
+loadProducts();
+</script>
+</body>
+</html>
